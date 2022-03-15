@@ -3,9 +3,9 @@
 import main from './main';
 
 registerPlugin({
-  name: 'MOD_NAME',
+  name: 'csm10495-plugin',
   version: '1.0',
-  authors: ['MOD_AUTHOR'],
+  authors: ['csm10495'],
   type: 'local',
   licence: 'MIT',
   main,
