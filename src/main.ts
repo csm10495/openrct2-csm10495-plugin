@@ -1,5 +1,10 @@
 import {
-  isUiAvailable
+  isUiAvailable,
+  getStaff,
+  getHandymen,
+  getMechanics,
+  getSecurity,
+  getEntertainers
 } from './helpers';
 
 function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
@@ -16,6 +21,13 @@ enum DepartFlags {
   Synchronise = 1 << 5,
   MinimumWaitingTime = 1 << 6,
   MaximumWaitingTime = 1 << 7,
+}
+
+enum StaffType {
+  Handyman = 0,
+  Mechanic = 1,
+  Security = 2,
+  Entertainer = 3
 }
 
 function park_config_get(key, dflt){
@@ -49,6 +61,14 @@ function toBool(thing){
   return JSON.parse(thing)
 }
 
+function fireStaff(id) {
+  context.executeAction("stafffire",{
+      "id" : id
+    }, function (result) {
+    // console.log(result);
+  })
+}
+
 var window_is_open = false;
 var window:Window;
 
@@ -60,7 +80,7 @@ function showUi() {
     window = ui.openWindow({
       "classification": 'classification?',
       "width": 200,
-      "height": 50,
+      "height": 80,
       "title" : "csm10495-Plugin",
       "widgets" : [
         {
@@ -70,10 +90,61 @@ function showUi() {
           isChecked: toBool(park_config_get('EnableMinWait', "false")),
           x: 5,
           y: 20,
-          width:200,
+          width:190,
           height:10,
           "onChange" : function(isChecked) {
             park_config_set('EnableMinWait', isChecked)
+          }
+        },
+        {
+          type: 'button',
+          name: 'FireAllStaff',
+          text: 'Fire All Staff',
+          x: 5,
+          y: 35,
+          width:190,
+          height:15,
+          "onClick" : function() {
+              getStaff().forEach(function(staff_member) {
+                fireStaff(staff_member.id)
+            });
+          }
+        },
+        {
+          type: 'button',
+          name: 'ReplaceAllStaff',
+          text: 'Replace All Staff',
+          tooltip: "Fires all staff, but then re-hires ones in their place. Note that staff blue-printing is not maintained.",
+          x: 5,
+          y: 55,
+          width:190,
+          height:15,
+          "onClick" : function() {
+              let staff: Staff[] = getStaff();
+
+              staff.forEach(function(staff_member) {
+                let typ = 0;
+                if (staff_member.staffType === "handyman") {
+                  typ = StaffType.Handyman;
+                } else if (staff_member.staffType === "mechanic") {
+                  typ = StaffType.Mechanic;
+                } else if (staff_member.staffType === "entertainer") {
+                  typ = StaffType.Entertainer;
+                } else if (staff_member.staffType === "security") {
+                  typ = StaffType.Security;
+                }
+                context.executeAction("staffhire",{
+                  "autoPosition" : true,
+                  "staffType" : typ,
+                  "entertainerType" : staff_member.costume,
+                  "staffOrders" : staff_member.orders,
+                }, function (result) {
+                  //console.log(result);
+                })
+
+                fireStaff(staff_member.id)
+              });
+
           }
         }
       ],
