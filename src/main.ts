@@ -30,6 +30,8 @@ enum StaffType {
   Entertainer = 3
 }
 
+var RIDE_TYPE_FLAG_ALLOW_MORE_VEHICLES_THAN_STATION_FITS = (1 << 38);
+
 function park_config_get(key, dflt){
   var res = context.getParkStorage("csm10495-plugin").get(key, dflt);
   // console.log("Got: " + key + " it is " + res);
@@ -41,19 +43,44 @@ function park_config_set(key, value) {
   return context.getParkStorage("csm10495-plugin").set(key, value);
 }
 
+function has_stats_calculated(ride) {
+  return ride.excitement != -1;
+}
 
 function setMinWaitOnAllRides() {
   // enable any load with no min/max time and leave if another train arrives
   // also set max lift hill speed
   map.rides.filter(notEmpty).forEach( ride => {
-    ride.minimumWaitingTime = 1;
-    ride.departFlags = 4;
-    ride.departFlags |= DepartFlags.WaitFor
-    ride.departFlags |= DepartFlags.AnotherTrainArives
-    ride.departFlags &= ~DepartFlags.MinimumWaitingTime
-    ride.departFlags &= ~DepartFlags.MaximumWaitingTime
+    if (ride.classification == "ride") {
+      ride.minimumWaitingTime = 1;
+      ride.maximumWaitingTime = 1;
 
-    ride.liftHillSpeed = ride.maxLiftHillSpeed;
+      // clear bit 0 and 1
+      ride.departFlags &= ~(1 << 0)
+      ride.departFlags &= ~(1 << 1)
+
+      // Setting this bit sets to "Any Load"
+      ride.departFlags |= 4;
+      ride.departFlags |= DepartFlags.WaitFor
+      ride.departFlags &= ~DepartFlags.MinimumWaitingTime
+      ride.departFlags &= ~DepartFlags.MaximumWaitingTime
+
+      // If we only have one station, no need to auto leave UNLESS more vehicles than a station fits
+      // are allowed. If we didn't have this flag in this case, someone could get stuck forever
+      if (ride.stations.length > 1 || (ride.object.flags & RIDE_TYPE_FLAG_ALLOW_MORE_VEHICLES_THAN_STATION_FITS))
+      {
+        ride.departFlags |= DepartFlags.AnotherTrainArives
+      }
+
+      ride.liftHillSpeed = ride.maxLiftHillSpeed;
+
+      // if the ride hasn't had stats calculated yet, let it go on its own
+      // this will let it calculate stats.
+      if (!has_stats_calculated(ride))
+      {
+        ride.departFlags |= DepartFlags.MaximumWaitingTime
+      }
+    }
   })
 }
 
