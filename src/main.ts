@@ -31,6 +31,7 @@ enum StaffType {
 }
 
 var RIDE_TYPE_FLAG_ALLOW_MORE_VEHICLES_THAN_STATION_FITS = (1 << 38);
+var ContinuousCircuitBlockSectioned = 34;
 
 function park_config_get(key, dflt){
   var res = context.getParkStorage("csm10495-plugin").get(key, dflt);
@@ -64,14 +65,6 @@ function setMinWaitOnAllRides() {
       ride.departFlags |= DepartFlags.WaitFor
       ride.departFlags &= ~DepartFlags.MinimumWaitingTime
       ride.departFlags &= ~DepartFlags.MaximumWaitingTime
-
-      // If we only have one station, no need to auto leave UNLESS more vehicles than a station fits
-      // are allowed. If we didn't have this flag in this case, someone could get stuck forever
-      if (ride.stations.length > 1 || (ride.object.flags & RIDE_TYPE_FLAG_ALLOW_MORE_VEHICLES_THAN_STATION_FITS))
-      {
-        ride.departFlags |= DepartFlags.AnotherTrainArives
-      }
-
       ride.liftHillSpeed = ride.maxLiftHillSpeed;
 
       // if the ride hasn't had stats calculated yet, let it go on its own
@@ -79,6 +72,19 @@ function setMinWaitOnAllRides() {
       if (!has_stats_calculated(ride))
       {
         ride.departFlags |= DepartFlags.MaximumWaitingTime
+      }
+      // If we have blocked sections, set a max wait time to ensure folks don't get stuck if no one is in-line.
+      else if (ride.mode == ContinuousCircuitBlockSectioned)
+      {
+        ride.maximumWaitingTime = 5;
+        ride.departFlags |= DepartFlags.MaximumWaitingTime;
+      }
+
+      // If we only have one station, no need to auto leave UNLESS more vehicles than a station fits
+      // are allowed. If we didn't have this flag in this case, someone could get stuck forever
+      if (ride.stations.length > 1 || (ride.object.flags & RIDE_TYPE_FLAG_ALLOW_MORE_VEHICLES_THAN_STATION_FITS))
+      {
+        ride.departFlags |= DepartFlags.AnotherTrainArives
       }
     }
   })
