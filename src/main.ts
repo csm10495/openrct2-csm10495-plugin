@@ -34,6 +34,9 @@ var ContinuousCircuitBlockSectioned = 34;
 var XY_PEEP_LOCATION_NULL = -32768; // on a ride, or something like that
 var XY_TILE_LOCATION_NULL = XY_PEEP_LOCATION_NULL / 32; // on a ride, or something like that
 
+var HALF_TILE_SIZE = 16;
+var FULL_TILE_SIZE = 16 * 2;
+
 function park_config_get(key, dflt){
   var res = context.getParkStorage("csm10495-plugin").get(key, dflt);
   // console.log("Got: " + key + " it is " + res);
@@ -49,21 +52,26 @@ function has_stats_calculated(ride) {
   return ride.excitement != -1;
 }
 
-function tile_coordinates_have_surface(x: number, y: number, z: number, valid_surfaces: Array<string>) {
+function tile_coordinates_have_surface(x: number, y: number, z: number | boolean, valid_surfaces: Array<string>) {
   // When given these coordinates, return true if any of the given surfaces are found.
 
-  //console.log("x, y, z: " + x + ", " + y + ", " + z);
+  //console.log("-- x, y, z: " + x + ", " + y + ", " + z);
   var tile = map.getTile(x, y);
   //console.log("tile x, y: " + tile.x + ", " + tile.y);
 
   function matching_z(element: TileElement, index, array) {
-    return peep_z_to_tile_coordinate(element.baseZ) == z;
+    if (z == true)
+    {
+      return true;
+    }
+
+    return peep_z_to_tile_coordinate(element.baseZ) <= z && peep_z_to_tile_coordinate(element.clearanceZ) >= z;
   }
   var matching_coord_tile_elements:Array<TileElement> = tile.elements.filter(matching_z);
 
   var is_valid = false;
   matching_coord_tile_elements.forEach(function(title_element){
-    // console.log(title_element.type.toString());
+    //console.log(title_element.type.toString());
     valid_surfaces.forEach(function (surface: string) {
       if (title_element.type == surface) {
         is_valid = true;
@@ -78,18 +86,21 @@ function tile_coordinates_have_surface(x: number, y: number, z: number, valid_su
       is_valid = true;
     }
 
-    //if (!is_valid) {
-    //  console.log("x, y, z: " + x + ", " + y + ", " + z);
-    //  matching_coord_tile_elements.forEach(function(title_element){
-    //    console.log(title_element.type.toString());
-    //  });
-    //}
+    /*
+    if (!is_valid) {
+      console.log("-- x, y, z: " + x + ", " + y + ", " + z);
+      matching_coord_tile_elements.forEach(function(title_element){
+        console.log(title_element.type.toString());
+      });
+    }
+    */
   }
 
   return is_valid;
 }
 
 function peep_on_surface(peep: Guest | Staff, surfaces: Array<string>) {
+  // console.log("Checking peep: " + peep.name);
   return tile_coordinates_have_surface(peep_xy_to_tile_coordinate(peep.x),
                                        peep_xy_to_tile_coordinate(peep.y),
                                        peep_z_to_tile_coordinate(peep.z),
@@ -102,9 +113,13 @@ function move_peep_to_valid_path(peep_to_move: Guest | Staff) {
   getGuests().every(function(guest) {
     // technically a footpath surface shouldn't really appear with a null peep location... but it seems to happen.
     //  .. must be a bug somewhere.. so safeguard against it here.
-    if (peep_on_surface(guest, ["footpath"]) && guest.isInPark && guest.x != XY_PEEP_LOCATION_NULL && guest.y != XY_PEEP_LOCATION_NULL) {
+    if (peep_on_surface(guest, ["footpath"]) && guest.isInPark && guest.x != XY_PEEP_LOCATION_NULL && guest.y != XY_PEEP_LOCATION_NULL && guest.id != peep_to_move.id) {
       guest_on_path = guest;
       return false;
+    }
+    else{
+      // console.log("could not move to: " + guest.name);
+      return true;
     }
   });
 
@@ -113,12 +128,43 @@ function move_peep_to_valid_path(peep_to_move: Guest | Staff) {
     peep_to_move.y = guest_on_path.y;
     peep_to_move.z = guest_on_path.z;
   }
+  // last ditch effort: if no other guests... plop right outside a ride exit
+  else {
+    var rides_with_exits = map.rides.filter(function (ride: Ride){
+      return ride.stations.length > 0 && ride.stations[0].exit != null;
+    });
 
+    if (rides_with_exits.length > 0) {
+      var exit = rides_with_exits[0].stations[0].exit;
+      var x = exit.x + HALF_TILE_SIZE;
+      var y = exit.y + HALF_TILE_SIZE;
+      var z = exit.z;
+      if (exit.direction == 0) {
+        x += FULL_TILE_SIZE;
+      }
+      else if (exit.direction == 1) {
+        y -= FULL_TILE_SIZE;
+      }
+      else if (exit.direction == 2) {
+        x -= FULL_TILE_SIZE;
+      }
+      else if (exit.direction == 3) {
+        y += FULL_TILE_SIZE;
+      }
+      peep_to_move.x = x;
+      peep_to_move.y = y;
+      peep_to_move.z = z;
+    }
+    else {
+      console.log("Nowhere available to move peep: " + peep_to_move.name);
+    }
+  }
 }
+
 
 function pathify(peep: Guest | Staff) {
   if (!peep_on_surface(peep, ["footpath", "track", "entrance"])) {
-    console.log("Peep: " + peep.name + " is not on a valid surface... attempting to move them.");
+    //console.log("Peep: " + peep.name + " is not on a valid surface... attempting to move them.");
     move_peep_to_valid_path(peep);
     return true;
   }
@@ -278,7 +324,7 @@ function showUi() {
           "onClick" : function() {
             var count: number = 0;
             getGuests().forEach(function (p){
-              if (pathify(p)) {
+              if (p.isInPark && pathify(p)) {
                 count++;
               }
             });
