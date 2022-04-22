@@ -1,10 +1,7 @@
 import {
   isUiAvailable,
   getStaff,
-  getHandymen,
-  getMechanics,
-  getSecurity,
-  getEntertainers
+  getGuests
 } from './helpers';
 
 function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
@@ -33,6 +30,10 @@ enum StaffType {
 var RIDE_TYPE_FLAG_ALLOW_MORE_VEHICLES_THAN_STATION_FITS = (1 << 38);
 var ContinuousCircuitBlockSectioned = 34;
 
+// in the game this is -32768; .. div by 32 to match up with tiles
+var XY_PEEP_LOCATION_NULL = -32768; // on a ride, or something like that
+var XY_TILE_LOCATION_NULL = XY_PEEP_LOCATION_NULL / 32; // on a ride, or something like that
+
 function park_config_get(key, dflt){
   var res = context.getParkStorage("csm10495-plugin").get(key, dflt);
   // console.log("Got: " + key + " it is " + res);
@@ -46,6 +47,92 @@ function park_config_set(key, value) {
 
 function has_stats_calculated(ride) {
   return ride.excitement != -1;
+}
+
+function tile_coordinates_have_surface(x: number, y: number, z: number, valid_surfaces: Array<string>) {
+  // When given these coordinates, return true if any of the given surfaces are found.
+
+  //console.log("x, y, z: " + x + ", " + y + ", " + z);
+  var tile = map.getTile(x, y);
+  //console.log("tile x, y: " + tile.x + ", " + tile.y);
+
+  function matching_z(element: TileElement, index, array) {
+    return peep_z_to_tile_coordinate(element.baseZ) == z;
+  }
+  var matching_coord_tile_elements:Array<TileElement> = tile.elements.filter(matching_z);
+
+  var is_valid = false;
+  matching_coord_tile_elements.forEach(function(title_element){
+    // console.log(title_element.type.toString());
+    valid_surfaces.forEach(function (surface: string) {
+      if (title_element.type == surface) {
+        is_valid = true;
+      }
+    });
+  });
+
+  if (!is_valid)
+  {
+    // a XY_TILE_LOCATION_NULL location typically means on a ride, so make it seem like they're on a track
+    if (x == XY_TILE_LOCATION_NULL || y == XY_TILE_LOCATION_NULL && valid_surfaces.includes("track")) {
+      is_valid = true;
+    }
+
+    //if (!is_valid) {
+    //  console.log("x, y, z: " + x + ", " + y + ", " + z);
+    //  matching_coord_tile_elements.forEach(function(title_element){
+    //    console.log(title_element.type.toString());
+    //  });
+    //}
+  }
+
+  return is_valid;
+}
+
+function peep_on_surface(peep: Guest | Staff, surfaces: Array<string>) {
+  return tile_coordinates_have_surface(peep_xy_to_tile_coordinate(peep.x),
+                                       peep_xy_to_tile_coordinate(peep.y),
+                                       peep_z_to_tile_coordinate(peep.z),
+                                       surfaces);
+}
+
+function move_peep_to_valid_path(peep_to_move: Guest | Staff) {
+  var guest_on_path: Guest = null;
+
+  getGuests().every(function(guest) {
+    // technically a footpath surface shouldn't really appear with a null peep location... but it seems to happen.
+    //  .. must be a bug somewhere.. so safeguard against it here.
+    if (peep_on_surface(guest, ["footpath"]) && guest.isInPark && guest.x != XY_PEEP_LOCATION_NULL && guest.y != XY_PEEP_LOCATION_NULL) {
+      guest_on_path = guest;
+      return false;
+    }
+  });
+
+  if (guest_on_path != null) {
+    peep_to_move.x = guest_on_path.x;
+    peep_to_move.y = guest_on_path.y;
+    peep_to_move.z = guest_on_path.z;
+  }
+
+}
+
+function pathify(peep: Guest | Staff) {
+  if (!peep_on_surface(peep, ["footpath", "track", "entrance"])) {
+    console.log("Peep: " + peep.name + " is not on a valid surface... attempting to move them.");
+    move_peep_to_valid_path(peep);
+    return true;
+  }
+  return false;
+}
+
+function peep_xy_to_tile_coordinate(c: number)
+{
+  return Math.floor(c / 32.0);
+}
+
+function peep_z_to_tile_coordinate(c: number)
+{
+  return Math.floor(c / 8.0);
 }
 
 function setMinWaitOnAllRides() {
@@ -113,7 +200,7 @@ function showUi() {
     window = ui.openWindow({
       "classification": 'classification?',
       "width": 200,
-      "height": 80,
+      "height": 100,
       "title" : "csm10495-Plugin",
       "widgets" : [
         {
@@ -177,9 +264,52 @@ function showUi() {
 
                 fireStaff(staff_member.id)
               });
-
           }
-        }
+        },
+        {
+          type: 'button',
+          name: 'PutGuestsBackOnPath',
+          text: 'Pathify Guests',
+          tooltip: "Ensure that guests are either on a path or on a ride. If a guest is walking around (but not on a path) they will be moved to be on a path.",
+          x: 5,
+          y: 75,
+          width:93,
+          height:15,
+          "onClick" : function() {
+            var count: number = 0;
+            getGuests().forEach(function (p){
+              if (pathify(p)) {
+                count++;
+              }
+            });
+            if (count > 0)
+            {
+              park.postMessage("Pathified " + count + " Guests");
+            }
+          }
+        },
+        {
+          type: 'button',
+          name: 'PutStaffBackOnPath',
+          text: 'Pathify Staff',
+          tooltip: "Ensure that staff are either on a path or on a ride. If a staff is walking around (but not on a path) they will be moved to be on a path.",
+          x: 102,
+          y: 75,
+          width:93,
+          height:15,
+          "onClick" : function() {
+            var count: number = 0;
+            getStaff().forEach(function (p){
+              if (pathify(p)) {
+                count++;
+              }
+            });
+            if (count > 0)
+            {
+              park.postMessage("Pathified " + count + " Staff");
+            }
+          }
+        },
       ],
       "onClose": function() {
         window_is_open = false;
