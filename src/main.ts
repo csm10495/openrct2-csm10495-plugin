@@ -37,6 +37,9 @@ var XY_TILE_LOCATION_NULL = XY_PEEP_LOCATION_NULL / 32; // on a ride, or somethi
 var HALF_TILE_SIZE = 16;
 var FULL_TILE_SIZE = 16 * 2;
 
+var ENTRANCE_OBJECT_PARK_ENTRANCE_EXIT = 2;
+var ENTRANCE_SEQUENCE_MIDDLE = 0;
+
 function park_config_get(key, dflt){
   var res = context.getParkStorage("csm10495-plugin").get(key, dflt);
   // console.log("Got: " + key + " it is " + res);
@@ -99,6 +102,28 @@ function tile_coordinates_have_surface(x: number, y: number, z: number | boolean
   return is_valid;
 }
 
+function get_x_y_in_front_of(xy: CoordsXY, direction: Direction | number){
+  var x = xy.x + HALF_TILE_SIZE;
+  var y = xy.y + HALF_TILE_SIZE;
+  if (direction == 0) {
+    x += FULL_TILE_SIZE;
+  }
+  else if (direction == 1) {
+    y -= FULL_TILE_SIZE;
+  }
+  else if (direction == 2) {
+    x -= FULL_TILE_SIZE;
+  }
+  else if (direction == 3) {
+    y += FULL_TILE_SIZE;
+  }
+
+  var ret = <CoordsXY>{};
+  ret.x = x;
+  ret.y = y;
+  return ret;
+}
+
 function peep_on_surface(peep: Guest | Staff, surfaces: Array<string>) {
   // console.log("Checking peep: " + peep.name);
   return tile_coordinates_have_surface(peep_xy_to_tile_coordinate(peep.x),
@@ -136,27 +161,55 @@ function move_peep_to_valid_path(peep_to_move: Guest | Staff) {
 
     if (rides_with_exits.length > 0) {
       var exit = rides_with_exits[0].stations[0].exit;
-      var x = exit.x + HALF_TILE_SIZE;
-      var y = exit.y + HALF_TILE_SIZE;
-      var z = exit.z;
-      if (exit.direction == 0) {
-        x += FULL_TILE_SIZE;
-      }
-      else if (exit.direction == 1) {
-        y -= FULL_TILE_SIZE;
-      }
-      else if (exit.direction == 2) {
-        x -= FULL_TILE_SIZE;
-      }
-      else if (exit.direction == 3) {
-        y += FULL_TILE_SIZE;
-      }
-      peep_to_move.x = x;
-      peep_to_move.y = y;
-      peep_to_move.z = z;
+      var coords = <CoordsXY>{
+        "x" : exit.x,
+        "y" : exit.y
+      };
+      var xy = get_x_y_in_front_of(coords, exit.direction);
+      peep_to_move.x = xy.x;
+      peep_to_move.y = xy.y;
+      peep_to_move.z = exit.z;
     }
     else {
-      console.log("Nowhere available to move peep: " + peep_to_move.name);
+      // super last ditch effort... no rides... so plop just inside park entrance
+      var done = false;
+      for (var x = 0; x < map.size.x; x++) {
+        if (done) {
+          break;
+        }
+        for (var y = 0; y < map.size.y; y++) {
+          if (done) {
+            break;
+          }
+          var tile = map.getTile(x, y);
+
+          tile.elements.every(function (element){
+            if (element.type == "entrance") {
+              var entrance = element as EntranceElement;
+              if (entrance.object == ENTRANCE_OBJECT_PARK_ENTRANCE_EXIT && entrance.sequence == ENTRANCE_SEQUENCE_MIDDLE)
+              {
+                var xy = tile_coordinates_to_peep_coordinates(<CoordsXY>{
+                  "x": tile.x,
+                  "y": tile.y
+                });
+                console.log(xy);
+
+                peep_to_move.x = xy.x;
+                peep_to_move.y = xy.y;
+                peep_to_move.z = element.baseZ;
+                done = true;
+                return false;
+              }
+            }
+            return true;
+          });
+        }
+      }
+
+      if (!done)
+      {
+        park.postMessage("Unable to pathify guests");
+      }
     }
   }
 }
@@ -179,6 +232,14 @@ function peep_xy_to_tile_coordinate(c: number)
 function peep_z_to_tile_coordinate(c: number)
 {
   return Math.floor(c / 8.0);
+}
+
+function tile_coordinates_to_peep_coordinates(coords: CoordsXY)
+{
+  return <CoordsXY>{
+    "x" : coords.x * 32,
+    "y" : coords.y * 32
+  };
 }
 
 function setMinWaitOnAllRides() {
