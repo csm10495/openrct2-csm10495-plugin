@@ -4,7 +4,7 @@ import { terser } from "rollup-plugin-terser";
 export default {
   input: "./src/registerPlugin.ts",
   output: {
-    file: "./build/csm10495-plugin.js",
+    file: "./dist/csm10495-plugin.js",
     format: "iife",
   },
   plugins: [

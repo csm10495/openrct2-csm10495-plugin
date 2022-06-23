@@ -23,6 +23,8 @@
     "no-param-reassign": 0,
     "no-plusplus": 0,
     "no-loop-func": 0,
+    "no-shadow": "off",
+    "@typescript-eslint/no-shadow": "error",
     "max-len": ["error", { "code": 160 }],
     "import/extensions": ["error", "always", { "js": "never", "ts": "never" }]
   },
