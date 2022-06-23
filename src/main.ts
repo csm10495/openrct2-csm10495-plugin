@@ -1,8 +1,4 @@
-import {
-  isUiAvailable,
-  getStaff,
-  getGuests
-} from './helpers';
+import { isUiAvailable, getStaff, getGuests } from './helpers';
 
 function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
   return value !== null && value !== undefined;
@@ -24,179 +20,204 @@ enum StaffType {
   Handyman = 0,
   Mechanic = 1,
   Security = 2,
-  Entertainer = 3
+  Entertainer = 3,
 }
 
-var RIDE_TYPE_FLAG_ALLOW_MORE_VEHICLES_THAN_STATION_FITS = (1 << 38);
-var ContinuousCircuitBlockSectioned = 34;
+const RIDE_TYPE_FLAG_ALLOW_MORE_VEHICLES_THAN_STATION_FITS = 1 << 38;
+const ContinuousCircuitBlockSectioned = 34;
 
 // in the game this is -32768; .. div by 32 to match up with tiles
-var XY_PEEP_LOCATION_NULL = -32768; // on a ride, or something like that
-var XY_TILE_LOCATION_NULL = XY_PEEP_LOCATION_NULL / 32; // on a ride, or something like that
+const XY_PEEP_LOCATION_NULL = -32768; // on a ride, or something like that
+const XY_TILE_LOCATION_NULL = XY_PEEP_LOCATION_NULL / 32; // on a ride, or something like that
 
-var HALF_TILE_SIZE = 16;
-var FULL_TILE_SIZE = 16 * 2;
+const HALF_TILE_SIZE = 16;
+const FULL_TILE_SIZE = 16 * 2;
 
-var ENTRANCE_OBJECT_PARK_ENTRANCE_EXIT = 2;
-var ENTRANCE_SEQUENCE_MIDDLE = 0;
+const ENTRANCE_OBJECT_PARK_ENTRANCE_EXIT = 2;
+const ENTRANCE_SEQUENCE_MIDDLE = 0;
 
-function park_config_get(key, dflt){
-  var res = context.getParkStorage("csm10495-plugin").get(key, dflt);
+function parkConfigGet(key, dflt) {
+  const res = context.getParkStorage('csm10495-plugin').get(key, dflt);
   // console.log("Got: " + key + " it is " + res);
   return res;
 }
 
-function park_config_set(key, value) {
+function parkConfigSet(key, value) {
   // console.log("Setting: " + key + " to " + value);
-  return context.getParkStorage("csm10495-plugin").set(key, value);
+  return context.getParkStorage('csm10495-plugin').set(key, value);
 }
 
-function has_stats_calculated(ride) {
-  return ride.excitement != -1;
+function hasStatsCalculated(ride) {
+  return ride.excitement !== -1;
 }
 
-function tile_coordinates_have_surface(x: number, y: number, z: number | boolean, valid_surfaces: Array<string>) {
+function peepXYToTileCoordinate(c: number) {
+  return Math.floor(c / 32.0);
+}
+
+function peepZToTileCoordinate(c: number) {
+  return Math.floor(c / 8.0);
+}
+
+function tileCoordinatesHaveSurface(
+  x: number,
+  y: number,
+  z: number | boolean,
+  validSurfaces: Array<string>,
+) {
   // When given these coordinates, return true if any of the given surfaces are found.
 
   //console.log("-- x, y, z: " + x + ", " + y + ", " + z);
-  var tile = map.getTile(x, y);
+  const tile = map.getTile(x, y);
   //console.log("tile x, y: " + tile.x + ", " + tile.y);
 
-  function matching_z(element: TileElement, index, array) {
-    if (z == true)
-    {
+  function matchingZ(element: TileElement, index, array) {
+    if (z === true) {
       return true;
     }
 
-    return peep_z_to_tile_coordinate(element.baseZ) <= z && peep_z_to_tile_coordinate(element.clearanceZ) >= z;
+    return (
+      peepZToTileCoordinate(element.baseZ) <= z
+      && peepZToTileCoordinate(element.clearanceZ) >= z
+    );
   }
-  var matching_coord_tile_elements:Array<TileElement> = tile.elements.filter(matching_z);
+  const matchingCoordTileElements: Array<TileElement> = tile.elements.filter(matchingZ);
 
-  var is_valid = false;
-  matching_coord_tile_elements.forEach(function(title_element){
-    //console.log(title_element.type.toString());
-    valid_surfaces.forEach(function (surface: string) {
-      if (title_element.type == surface) {
-        is_valid = true;
+  let isValid = false;
+  matchingCoordTileElements.forEach((titleElement) => {
+    //console.log(titleElement.type.toString());
+    validSurfaces.forEach((surface: string) => {
+      if (titleElement.type === surface) {
+        isValid = true;
       }
     });
   });
 
-  if (!is_valid)
-  {
+  if (!isValid) {
     // a XY_TILE_LOCATION_NULL location typically means on a ride, so make it seem like they're on a track
-    if (x == XY_TILE_LOCATION_NULL || y == XY_TILE_LOCATION_NULL && valid_surfaces.includes("track")) {
-      is_valid = true;
+    if (
+      x === XY_TILE_LOCATION_NULL
+      || (y === XY_TILE_LOCATION_NULL && validSurfaces.includes('track'))
+    ) {
+      isValid = true;
     }
 
     /*
-    if (!is_valid) {
+    if (!isValid) {
       console.log("-- x, y, z: " + x + ", " + y + ", " + z);
-      matching_coord_tile_elements.forEach(function(title_element){
-        console.log(title_element.type.toString());
+      matchingCoordTileElements.forEach(function(titleElement){
+        console.log(titleElement.type.toString());
       });
     }
     */
   }
 
-  return is_valid;
+  return isValid;
 }
 
-function get_x_y_in_front_of(xy: CoordsXY, direction: Direction | number){
-  var x = xy.x + HALF_TILE_SIZE;
-  var y = xy.y + HALF_TILE_SIZE;
-  if (direction == 0) {
+function getXYInFrontOf(xy: CoordsXY, direction: Direction | number) {
+  let x = xy.x + HALF_TILE_SIZE;
+  let y = xy.y + HALF_TILE_SIZE;
+  if (direction === 0) {
     x += FULL_TILE_SIZE;
-  }
-  else if (direction == 1) {
+  } else if (direction === 1) {
     y -= FULL_TILE_SIZE;
-  }
-  else if (direction == 2) {
+  } else if (direction === 2) {
     x -= FULL_TILE_SIZE;
-  }
-  else if (direction == 3) {
+  } else if (direction === 3) {
     y += FULL_TILE_SIZE;
   }
 
-  var ret = <CoordsXY>{};
+  const ret = <CoordsXY>{};
   ret.x = x;
   ret.y = y;
   return ret;
 }
 
-function peep_on_surface(peep: Guest | Staff, surfaces: Array<string>) {
+function peepOnSurface(peep: Guest | Staff, surfaces: Array<string>) {
   // console.log("Checking peep: " + peep.name);
-  return tile_coordinates_have_surface(peep_xy_to_tile_coordinate(peep.x),
-                                       peep_xy_to_tile_coordinate(peep.y),
-                                       peep_z_to_tile_coordinate(peep.z),
-                                       surfaces);
+  return tileCoordinatesHaveSurface(
+    peepXYToTileCoordinate(peep.x),
+    peepXYToTileCoordinate(peep.y),
+    peepZToTileCoordinate(peep.z),
+    surfaces,
+  );
 }
 
-function move_peep_to_valid_path(peep_to_move: Guest | Staff) {
-  var guest_on_path: Guest = null;
+function tileCoordinatesToPeepCoordinates(coords: CoordsXY) {
+  return <CoordsXY>{
+    x: coords.x * 32,
+    y: coords.y * 32,
+  };
+}
 
-  getGuests().every(function(guest) {
+function movePeepToValidPath(peepToMove: Guest | Staff) {
+  let guestOnPath: Guest = null;
+
+  getGuests().every((guest) => {
     // technically a footpath surface shouldn't really appear with a null peep location... but it seems to happen.
     //  .. must be a bug somewhere.. so safeguard against it here.
-    if (peep_on_surface(guest, ["footpath"]) && guest.isInPark && guest.x != XY_PEEP_LOCATION_NULL && guest.y != XY_PEEP_LOCATION_NULL && guest.id != peep_to_move.id) {
-      guest_on_path = guest;
+    if (
+      peepOnSurface(guest, ['footpath'])
+      && guest.isInPark
+      && guest.x !== XY_PEEP_LOCATION_NULL
+      && guest.y !== XY_PEEP_LOCATION_NULL
+      && guest.id !== peepToMove.id
+    ) {
+      guestOnPath = guest;
       return false;
     }
-    else{
-      // console.log("could not move to: " + guest.name);
-      return true;
-    }
+    // console.log("could not move to: " + guest.name);
+    return true;
   });
 
-  if (guest_on_path != null) {
-    peep_to_move.x = guest_on_path.x;
-    peep_to_move.y = guest_on_path.y;
-    peep_to_move.z = guest_on_path.z;
-  }
-  // last ditch effort: if no other guests... plop right outside a ride exit
-  else {
-    var rides_with_exits = map.rides.filter(function (ride: Ride){
-      return ride.stations.length > 0 && ride.stations[0].exit != null;
-    });
+  if (guestOnPath != null) {
+    peepToMove.x = guestOnPath.x;
+    peepToMove.y = guestOnPath.y;
+    peepToMove.z = guestOnPath.z;
+  } else {
+    // last ditch effort: if no other guests... plop right outside a ride exit
+    const ridesWithExits = map.rides.filter((ride: Ride) => ride.stations.length > 0 && ride.stations[0].exit != null);
 
-    if (rides_with_exits.length > 0) {
-      var exit = rides_with_exits[0].stations[0].exit;
-      var coords = <CoordsXY>{
-        "x" : exit.x,
-        "y" : exit.y
+    if (ridesWithExits.length > 0) {
+      const { exit } = ridesWithExits[0].stations[0];
+      const coords = <CoordsXY>{
+        x: exit.x,
+        y: exit.y,
       };
-      var xy = get_x_y_in_front_of(coords, exit.direction);
-      peep_to_move.x = xy.x;
-      peep_to_move.y = xy.y;
-      peep_to_move.z = exit.z;
-    }
-    else {
+      const xy = getXYInFrontOf(coords, exit.direction);
+      peepToMove.x = xy.x;
+      peepToMove.y = xy.y;
+      peepToMove.z = exit.z;
+    } else {
       // super last ditch effort... no rides... so plop just inside park entrance
-      var done = false;
-      for (var x = 0; x < map.size.x; x++) {
+      let done = false;
+      for (let x = 0; x < map.size.x; x++) {
         if (done) {
           break;
         }
-        for (var y = 0; y < map.size.y; y++) {
+        for (let y = 0; y < map.size.y; y++) {
           if (done) {
             break;
           }
-          var tile = map.getTile(x, y);
+          const tile = map.getTile(x, y);
 
-          tile.elements.every(function (element){
-            if (element.type == "entrance") {
-              var entrance = element as EntranceElement;
-              if (entrance.object == ENTRANCE_OBJECT_PARK_ENTRANCE_EXIT && entrance.sequence == ENTRANCE_SEQUENCE_MIDDLE)
-              {
-                var xy = tile_coordinates_to_peep_coordinates(<CoordsXY>{
-                  "x": tile.x,
-                  "y": tile.y
+          tile.elements.every((element) => {
+            if (element.type === 'entrance') {
+              const entrance = element as EntranceElement;
+              if (
+                entrance.object === ENTRANCE_OBJECT_PARK_ENTRANCE_EXIT
+                && entrance.sequence === ENTRANCE_SEQUENCE_MIDDLE
+              ) {
+                const xy = tileCoordinatesToPeepCoordinates(<CoordsXY>{
+                  x: tile.x,
+                  y: tile.y,
                 });
-                console.log(xy);
+                // console.log(xy);
 
-                peep_to_move.x = xy.x;
-                peep_to_move.y = xy.y;
-                peep_to_move.z = element.baseZ;
+                peepToMove.x = xy.x;
+                peepToMove.y = xy.y;
+                peepToMove.z = element.baseZ;
                 done = true;
                 return false;
               }
@@ -206,122 +227,104 @@ function move_peep_to_valid_path(peep_to_move: Guest | Staff) {
         }
       }
 
-      if (!done)
-      {
-        park.postMessage("Unable to pathify guests");
+      if (!done) {
+        park.postMessage('Unable to pathify guests');
       }
     }
   }
 }
 
-
 function pathify(peep: Guest | Staff) {
-  if (!peep_on_surface(peep, ["footpath", "track", "entrance"])) {
+  if (!peepOnSurface(peep, ['footpath', 'track', 'entrance'])) {
     //console.log("Peep: " + peep.name + " is not on a valid surface... attempting to move them.");
-    move_peep_to_valid_path(peep);
+    movePeepToValidPath(peep);
     return true;
   }
   return false;
 }
 
-function peep_xy_to_tile_coordinate(c: number)
-{
-  return Math.floor(c / 32.0);
-}
-
-function peep_z_to_tile_coordinate(c: number)
-{
-  return Math.floor(c / 8.0);
-}
-
-function tile_coordinates_to_peep_coordinates(coords: CoordsXY)
-{
-  return <CoordsXY>{
-    "x" : coords.x * 32,
-    "y" : coords.y * 32
-  };
-}
-
 function setMinWaitOnAllRides() {
   // enable any load with no min/max time and leave if another train arrives
   // also set max lift hill speed
-  map.rides.filter(notEmpty).forEach( ride => {
-    if (ride.classification == "ride") {
+  map.rides.filter(notEmpty).forEach((ride) => {
+    if (ride.classification === 'ride') {
       ride.minimumWaitingTime = 1;
       ride.maximumWaitingTime = 1;
 
       // clear bit 0 and 1
-      ride.departFlags &= ~(1 << 0)
-      ride.departFlags &= ~(1 << 1)
+      ride.departFlags &= ~(1 << 0);
+      ride.departFlags &= ~(1 << 1);
 
       // Setting this bit sets to "Any Load"
       ride.departFlags |= 4;
-      ride.departFlags |= DepartFlags.WaitFor
-      ride.departFlags &= ~DepartFlags.MinimumWaitingTime
-      ride.departFlags &= ~DepartFlags.MaximumWaitingTime
+      ride.departFlags |= DepartFlags.WaitFor;
+      ride.departFlags &= ~DepartFlags.MinimumWaitingTime;
+      ride.departFlags &= ~DepartFlags.MaximumWaitingTime;
       ride.liftHillSpeed = ride.maxLiftHillSpeed;
 
       // if the ride hasn't had stats calculated yet, let it go on its own
       // this will let it calculate stats.
-      if (!has_stats_calculated(ride))
-      {
-        ride.departFlags |= DepartFlags.MaximumWaitingTime
-      }
-      // If we have blocked sections, set a max wait time to ensure folks don't get stuck if no one is in-line.
-      else if (ride.mode == ContinuousCircuitBlockSectioned)
-      {
+      if (!hasStatsCalculated(ride)) {
+        ride.departFlags |= DepartFlags.MaximumWaitingTime;
+      } else if (ride.mode === ContinuousCircuitBlockSectioned) {
+        // If we have blocked sections, set a max wait time to ensure folks don't get stuck if no one is in-line.
         ride.maximumWaitingTime = 5;
         ride.departFlags |= DepartFlags.MaximumWaitingTime;
       }
 
       // If we only have one station, no need to auto leave UNLESS more vehicles than a station fits
       // are allowed. If we didn't have this flag in this case, someone could get stuck forever
-      if (ride.stations.length > 1 || (ride.object.flags & RIDE_TYPE_FLAG_ALLOW_MORE_VEHICLES_THAN_STATION_FITS))
-      {
-        ride.departFlags |= DepartFlags.AnotherTrainArives
+      if (
+        ride.stations.length > 1
+        || ride.object.flags & RIDE_TYPE_FLAG_ALLOW_MORE_VEHICLES_THAN_STATION_FITS
+      ) {
+        ride.departFlags |= DepartFlags.AnotherTrainArives;
       }
     }
-  })
+  });
 }
 
-function toBool(thing){
-  return JSON.parse(thing)
+function toBool(thing) {
+  return JSON.parse(thing);
 }
 
 function fireStaff(id) {
-  context.executeAction("stafffire",{
-      "id" : id
-    }, function (result) {
-    // console.log(result);
-  })
+  context.executeAction(
+    'stafffire',
+    {
+      id,
+    },
+    (result) => {
+      // console.log(result);
+    },
+  );
 }
 
-var window_is_open = false;
-var window:Window;
+let windowIsOpen = false;
+let window: Window;
 
 function showUi() {
-  if (window_is_open) {
+  if (windowIsOpen) {
     window.bringToFront();
-  }
-  else {
+  } else {
     window = ui.openWindow({
-      "classification": 'classification?',
-      "width": 200,
-      "height": 100,
-      "title" : "csm10495-Plugin",
-      "widgets" : [
+      classification: 'classification?',
+      width: 200,
+      height: 100,
+      title: 'csm10495-Plugin',
+      widgets: [
         {
           type: 'checkbox',
           name: 'EnableMinWait',
           text: 'Enable Min Wait On all Rides',
-          isChecked: toBool(park_config_get('EnableMinWait', "false")),
+          isChecked: toBool(parkConfigGet('EnableMinWait', 'false')),
           x: 5,
           y: 20,
-          width:190,
-          height:10,
-          "onChange" : function(isChecked) {
-            park_config_set('EnableMinWait', isChecked)
-          }
+          width: 190,
+          height: 10,
+          onChange(isChecked) {
+            parkConfigSet('EnableMinWait', isChecked);
+          },
         },
         {
           type: 'button',
@@ -329,126 +332,130 @@ function showUi() {
           text: 'Fire All Staff',
           x: 5,
           y: 35,
-          width:190,
-          height:15,
-          "onClick" : function() {
-              getStaff().forEach(function(staff_member) {
-                fireStaff(staff_member.id)
+          width: 190,
+          height: 15,
+          onClick() {
+            getStaff().forEach((staffMember) => {
+              fireStaff(staffMember.id);
             });
-          }
+          },
         },
         {
           type: 'button',
           name: 'ReplaceAllStaff',
           text: 'Replace All Staff',
-          tooltip: "Fires all staff, but then re-hires ones in their place. Note that staff blue-printing is not maintained.",
+          tooltip:
+            'Fires all staff, but then re-hires ones in their place. Note that staff blue-printing is not maintained.',
           x: 5,
           y: 55,
-          width:190,
-          height:15,
-          "onClick" : function() {
-              let staff: Staff[] = getStaff();
+          width: 190,
+          height: 15,
+          onClick() {
+            const staff: Staff[] = getStaff();
 
-              staff.forEach(function(staff_member) {
-                let typ = 0;
-                if (staff_member.staffType === "handyman") {
-                  typ = StaffType.Handyman;
-                } else if (staff_member.staffType === "mechanic") {
-                  typ = StaffType.Mechanic;
-                } else if (staff_member.staffType === "entertainer") {
-                  typ = StaffType.Entertainer;
-                } else if (staff_member.staffType === "security") {
-                  typ = StaffType.Security;
-                }
-                context.executeAction("staffhire",{
-                  "autoPosition" : true,
-                  "staffType" : typ,
-                  "entertainerType" : staff_member.costume,
-                  "staffOrders" : staff_member.orders,
-                }, function (result) {
+            staff.forEach((staffMember) => {
+              let typ = 0;
+              if (staffMember.staffType === 'handyman') {
+                typ = StaffType.Handyman;
+              } else if (staffMember.staffType === 'mechanic') {
+                typ = StaffType.Mechanic;
+              } else if (staffMember.staffType === 'entertainer') {
+                typ = StaffType.Entertainer;
+              } else if (staffMember.staffType === 'security') {
+                typ = StaffType.Security;
+              }
+              context.executeAction(
+                'staffhire',
+                {
+                  autoPosition: true,
+                  staffType: typ,
+                  entertainerType: staffMember.costume,
+                  staffOrders: staffMember.orders,
+                },
+                (result) => {
                   //console.log(result);
-                })
+                },
+              );
 
-                fireStaff(staff_member.id)
-              });
-          }
+              fireStaff(staffMember.id);
+            });
+          },
         },
         {
           type: 'button',
           name: 'PutGuestsBackOnPath',
           text: 'Pathify Guests',
-          tooltip: "Ensure that guests are either on a path or on a ride. If a guest is walking around (but not on a path) they will be moved to be on a path.",
+          tooltip:
+            'Ensure that guests are either on a path or on a ride. If a guest is walking around (but not on a path) they will be moved to be on a path.',
           x: 5,
           y: 75,
-          width:93,
-          height:15,
-          "onClick" : function() {
-            var count: number = 0;
-            getGuests().forEach(function (p){
+          width: 93,
+          height: 15,
+          onClick() {
+            let count: number = 0;
+            getGuests().forEach((p) => {
               if (p.isInPark && pathify(p)) {
                 count++;
               }
             });
-            if (count > 0)
-            {
-              park.postMessage("Pathified " + count + " Guests");
+            if (count > 0) {
+              park.postMessage(`Pathified ${count} Guests`);
             }
-          }
+          },
         },
         {
           type: 'button',
           name: 'PutStaffBackOnPath',
           text: 'Pathify Staff',
-          tooltip: "Ensure that staff are either on a path or on a ride. If a staff is walking around (but not on a path) they will be moved to be on a path.",
+          tooltip:
+            'Ensure that staff are either on a path or on a ride. If a staff is walking around (but not on a path) they will be moved to be on a path.',
           x: 102,
           y: 75,
-          width:93,
-          height:15,
-          "onClick" : function() {
-            var count: number = 0;
-            getStaff().forEach(function (p){
+          width: 93,
+          height: 15,
+          onClick() {
+            let count: number = 0;
+            getStaff().forEach((p) => {
               if (pathify(p)) {
                 count++;
               }
             });
-            if (count > 0)
-            {
-              park.postMessage("Pathified " + count + " Staff");
+            if (count > 0) {
+              park.postMessage(`Pathified ${count} Staff`);
             }
-          }
+          },
         },
       ],
-      "onClose": function() {
-        window_is_open = false;
-      }
+      onClose() {
+        windowIsOpen = false;
+      },
     });
-    window_is_open = true;
+    windowIsOpen = true;
   }
-
-
 }
 
 const main = (): void => {
   if (isUiAvailable) {
-    ui.registerMenuItem("csm10495-Plugin", function() {
+    ui.registerMenuItem('csm10495-Plugin', () => {
       showUi();
     });
   }
 
   // show the ui on park open if we haven't shown the ui before
-  if (isUiAvailable && toBool!(park_config_get('HasShownUiOnParkStart', "false")) === false) {
+  if (
+    isUiAvailable
+    && toBool!(parkConfigGet('HasShownUiOnParkStart', 'false')) === false
+  ) {
     showUi();
-    park_config_set('HasShownUiOnParkStart', "true")
+    parkConfigSet('HasShownUiOnParkStart', 'true');
   }
 
-  context.subscribe("interval.day", function()
-  {
+  context.subscribe('interval.day', () => {
     //console.log("A day passed");
-    if (toBool(park_config_get('EnableMinWait', "false"))) {
+    if (toBool(parkConfigGet('EnableMinWait', 'false'))) {
       setMinWaitOnAllRides();
     }
   });
-
 };
 
 export default main;
